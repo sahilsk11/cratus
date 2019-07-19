@@ -104,17 +104,17 @@ func parseFile() string {
 func main() {
 	http.HandleFunc("/helloworld", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("/helloworld")
-		fmt.Fprintf(w, "hello world")
+		//fmt.Fprintf(w, "hello world")
 	})
 
 	http.HandleFunc("/readdata", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, readJSON())
-		fmt.Println("/readdata")
+		//fmt.Println("/readdata")
 	})
 
 	http.HandleFunc("/writedata", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, writeJSON())
-		fmt.Println("/writedata")
+		//fmt.Println("/writedata")
 	})
 
 	http.HandleFunc("/calculatefib", func(w http.ResponseWriter, r *http.Request) {
@@ -125,12 +125,12 @@ func main() {
 			n = 20
 		}
 		fmt.Fprint(w, fib(n))
-		fmt.Println("/calculatefib")
+		//fmt.Println("/calculatefib")
 	})
 
 	http.HandleFunc("/parsefile", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, parseFile())
-		fmt.Println("/parsefile")
+		//fmt.Println("/parsefile")
 	})
 
 	log.Fatal(http.ListenAndServe(":8080", nil))

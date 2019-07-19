@@ -161,7 +161,7 @@
   </component>
   <component name="RunManager">
     <configuration name="Endpoint" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
-      <option name="MAIN_CLASS_NAME" value="hello.Endpoint" />
+      <option name="MAIN_CLASS_NAME" value="hello.Spring" />
       <module name="endpointspeed" />
       <method v="2">
         <option name="Make" enabled="true" />

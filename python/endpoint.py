@@ -32,7 +32,7 @@ def fib():
     try:
         n = int(flask.request.args.get("n"))
     except:
-        n = 20
+        return "Error: missing parameter"
     return str(fib_helper(n))
 
 

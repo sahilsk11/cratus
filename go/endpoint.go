@@ -103,8 +103,8 @@ func parseFile() string {
 
 func main() {
 	http.HandleFunc("/helloworld", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("/helloworld")
-		//fmt.Fprintf(w, "hello world")
+		//fmt.Println("/helloworld")
+		fmt.Fprintf(w, "hello world")
 	})
 
 	http.HandleFunc("/readdata", func(w http.ResponseWriter, r *http.Request) {

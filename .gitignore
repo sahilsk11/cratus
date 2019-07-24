@@ -1,5 +1,6 @@
+error.log
 .idea
 .project
 .classpath
 .settings
-
+*.csv

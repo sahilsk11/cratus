@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/csv"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -16,27 +19,34 @@ type Parameters struct {
 	value int
 }
 
-func timeRequest(baseURL string, port string, command string, parameters Parameters) float64 {
+type Output struct {
+	command     string
+	connections int
+	python      float64
+	node        float64
+	java        float64
+	golang      float64
+}
+
+func timeRequest(baseURL string, port string, command string, parameters Parameters, index int) (float64, error) {
 	url := fmt.Sprintf("%s:%s/%s?%s=%d", baseURL, port, command, parameters.name, parameters.value)
 	start := time.Now()
 	response, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
-		return -1
-	}
 	functionDuration := time.Since(start)
+
+	if err != nil {
+		return -1, err
+	}
 	responseBody, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err)
-		return -1
+		return -1, err
 	}
 	correct, expected := verifyResponse(command, responseBody, parameters.value)
 	if correct {
 		time := durationToMs(functionDuration)
-		return time
+		return time, nil
 	}
-	fmt.Println("Incorrect return result. Output: " + string(responseBody) + ". Expected: " + expected)
-	return -1
+	return -1, errors.New("Incorrect return result. Output: " + string(responseBody) + ". Expected: " + expected)
 }
 
 func verifyResponse(command string, response []byte, n int) (bool, string) {
@@ -69,15 +79,21 @@ func multipleConnections(baseURL string, connections int, port string, command s
 	var wg sync.WaitGroup
 	var totalTime float64
 	var countOperations int
+	f, err := os.OpenFile("error.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatal("Could not open log")
+	}
+	defer f.Close()
+	log.SetOutput(f)
 	for i := 0; i < connections; i++ {
 		wg.Add(1)
 		go func(port string, command string, parameters Parameters, index int) {
-			fmt.Println("started" + strconv.Itoa(index))
-			time := timeRequest(baseURL, port, command, parameters)
-			fmt.Println("finished" + strconv.Itoa(index))
-			if time > 0 {
+			time, err := timeRequest(baseURL, port, command, parameters, index)
+			if err == nil {
 				totalTime += time
 				countOperations++
+			} else {
+				//fmt.Println(port + " failed at " + strconv.Itoa(index))
 			}
 			wg.Done()
 		}(port, command, parameters, i)
@@ -86,6 +102,8 @@ func multipleConnections(baseURL string, connections int, port string, command s
 	if countOperations == 0 {
 		return 0
 	}
+	failed := connections - countOperations
+	fmt.Println("Failed: " + strconv.Itoa(failed))
 	return totalTime / float64(countOperations)
 }
 
@@ -94,24 +112,66 @@ func durationToMs(functionDuration time.Duration) float64 {
 }
 
 func floatToString(float float64) string {
-	return fmt.Sprintf("%f ms", float)
+	return fmt.Sprintf("%f", float)
 }
 
-func strainAllEndpointns(connections int, baseURL string, command string, parameters Parameters) {
-	fmt.Printf("\nCommand: %s. Connections: %d\n", command, connections)
-	fmt.Println("Python:\t" + floatToString(multipleConnections(baseURL, connections, "5001", command, parameters)))
-	fmt.Println("Go:\t" + floatToString(multipleConnections(baseURL, connections, "8080", command, parameters)))
-	fmt.Println("Java:\t" + floatToString(multipleConnections(baseURL, connections, "9090", command, parameters)))
-	fmt.Println("Node:\t" + floatToString(multipleConnections(baseURL, connections, "3000", command, parameters)))
-	fmt.Println()
+func strainAllEndpoints(connections int, baseURL string, command string, parameters Parameters) Output {
+	pythonTime := multipleConnections(baseURL, connections, "5001", command, parameters)
+	goTime := multipleConnections(baseURL, connections, "8080", command, parameters)
+	javaTime := multipleConnections(baseURL, connections, "9090", command, parameters)
+	nodeTime := multipleConnections(baseURL, connections, "3000", command, parameters)
+	output := Output{
+		connections: connections,
+		command:     command,
+		python:      pythonTime,
+		golang:      goTime,
+		node:        nodeTime,
+		java:        javaTime,
+	}
+	return output
+}
+
+func writeHeadingToCSV(output Output) {
+	file, err := os.OpenFile("output.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	heading := []string{output.command}
+	languages := []string{"", "python", "node", "java", "go"}
+
+	writer.WriteAll([][]string{heading, languages})
+}
+
+func writeOutcomeToCSV(output Output) {
+	file, err := os.OpenFile("output.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	line := []string{
+		strconv.Itoa(output.connections),
+		floatToString(output.python),
+		floatToString(output.node),
+		floatToString(output.java),
+		floatToString(output.golang),
+	}
+	writer.Write(line)
 }
 
 func main() {
 	//url := "http://ec2-52-53-71-18.us-west-1.compute.amazonaws.com"
 	url := "http://localhost"
-	fmt.Println(floatToString(multipleConnections(url,
-		10,
-		"8080",
-		"calculatefib",
-		Parameters{"n", 3})))
+	connections := 400
+	command := "helloworld"
+	parameters := Parameters{}
+	output := strainAllEndpoints(connections, url, command, parameters)
+	//writeHeadingToCSV(output)
+	writeOutcomeToCSV(output)
 }

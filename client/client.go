@@ -84,7 +84,7 @@ func multipleConnections(baseURL string, connections int, port string, command s
 		log.Fatal("Could not open log")
 	}
 	defer f.Close()
-	log.SetOutput(f)
+	//log.SetOutput(f)
 	for i := 0; i < connections; i++ {
 		wg.Add(1)
 		go func(port string, command string, parameters Parameters, index int) {
@@ -93,7 +93,7 @@ func multipleConnections(baseURL string, connections int, port string, command s
 				totalTime += time
 				countOperations++
 			} else {
-				//fmt.Println(port + " failed at " + strconv.Itoa(index))
+				fmt.Println(err)
 			}
 			wg.Done()
 		}(port, command, parameters, i)
@@ -168,10 +168,8 @@ func writeOutcomeToCSV(output Output) {
 func main() {
 	//url := "http://ec2-52-53-71-18.us-west-1.compute.amazonaws.com"
 	url := "http://localhost"
-	connections := 400
-	command := "helloworld"
-	parameters := Parameters{}
-	output := strainAllEndpoints(connections, url, command, parameters)
-	//writeHeadingToCSV(output)
-	writeOutcomeToCSV(output)
+	connections := 100
+	command := "calcualtefib"
+	parameters := Parameters{name: "n", value: 20}
+	fmt.Println(floatToString(multipleConnections(url, connections, "8080", command, parameters)))
 }

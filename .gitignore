@@ -1,0 +1,10 @@
+error.log
+passwords.py
+db_config.js
+.node_modules/
+env/
+.idea
+.project
+.classpath
+.settings
+*.csv

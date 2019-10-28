@@ -3,6 +3,7 @@ const { Pool } = require("pg");
 const db_config = require("./db_config")
 
 const app = express();
+const pool = new Pool(db_config);
 
 app.listen(3000, () => {
   console.log("Server running on port 3000");
@@ -17,12 +18,9 @@ app.get("/helloworld", (req, res) => {
 });
 
 app.get("/get-mini-employees", (request, response) => {
-  const pool = new Pool(db_config);
-  //var i = req.query.i;
   pool.query('SELECT * FROM mini_employee', (err, res) => {
     if (err) console.log(err);
-    response.send(res.rows);
-    pool.end();
+    response.json(res.rows);
   });
 });
 

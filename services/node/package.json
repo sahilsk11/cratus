@@ -8,7 +8,7 @@
     "start": "node index",
     "dev": "nodemon index"
   },
-  "author": "",
+  "author": "Sahil Kapur",
   "license": "ISC",
   "dependencies": {
     "express": "^4.17.1",
@@ -17,5 +17,9 @@
   "devDependencies": {
     "nodemon": "^1.19.4"
   },
-  "keywords": []
+  "keywords": [],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sahilsk11/endpointracker.git"
+  }
 }

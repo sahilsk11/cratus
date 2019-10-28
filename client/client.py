@@ -18,7 +18,7 @@ Think of this as the front end of the application requesting data from a service
 Contains function to test each service
 '''
 
-ports = {"python": "5000",
+ports = {"python": "5001",
          "java": "9090",
          "node": "3000",
          "go": "8080"
@@ -29,6 +29,10 @@ lock = threading.Lock()
 '''
 Times a single request to an endpoint and returns the time
 
+port: the port to request
+command: the endpoint to request
+results: stores the output as a dict in results
+params: list of URL parameters as tuples
 '''
 def time_request(port, command, results=None, params=None):
     param_list = {}
@@ -36,9 +40,12 @@ def time_request(port, command, results=None, params=None):
     failed = False
     traceback_message = None
     total_time = 0
+    
+    #generates dict for URL parameters
     if params != None:
         for e in params:
             param_list[e[0]] = e[1]
+    
     try:
         start_time = time.time()
         r = requests.get(
@@ -47,6 +54,7 @@ def time_request(port, command, results=None, params=None):
             timeout=10000,
         )
         end_time = time.time()
+        #ensure response is the same as expected
         if not verify_response(command, r, params):
             error["message"] = "incorrect response"
             failed = True
@@ -56,10 +64,28 @@ def time_request(port, command, results=None, params=None):
         error = {"message": "unhandled error in connection", "error_object": e}
         failed = True
         traceback_message = traceback.format_exc(limit=1)
-    
+    #since we store output in results, if no results is passed, discard run
     if results is None:
         return
-    
+    #prevent thread overwriting by generating lock
+    lock.acquire()
+    if not failed:
+        results["result_times"].append(total_time)
+    else:
+        results["debug_report"] = generate_debug_report(
+            error, failed, r, traceback_message, port, total_time)
+
+    lock.release()
+
+def verify_response(command, r, n=20):
+    if (command == "get-mini-employees"):
+        return len(r.json()) == 10000
+    if command == "calculatefib":
+        expected = {20: "6765", 30: "832040", 34: "5702887"}
+        return r.text == expected[n]
+    return True
+
+def generate_debug_report(error, failed, r, traceback_message, port, total_time):
     debug_report = {}
     successful_connection = error["error_object"] == None
     if successful_connection and failed:
@@ -72,27 +98,18 @@ def time_request(port, command, results=None, params=None):
     debug_report["port"] = port
     debug_report["status_code"]: r.status_code
     debug_report["execution_time"]: str(total_time)
-
-    if results != None:
-        lock.acquire()
-        if not failed:
-            results["result_times"].append(total_time)
-        else:
-            results["debug_report"] = debug_report
-        lock.release()
-
-def verify_response(command, r, n=20):
-    if (command == "get-mini-employees"):
-        return len(r.json()) == 10000
-    if command == "calculatefib":
-        expected = {20: "6765", 30: "832040", 34: "5702887"}
-        return r.text == expected[n]
-    return True
+    return debug_report
 
 def parse_times(result_obj):
     result_times = result_obj["result_times"]
     if (len(result_times) == 0):
-        result_obj["analysis"] = {"average_time": None, "min": None, "max": None, "stdev": None, "fail_percentage": 100}
+        result_obj["analysis"] = {
+            "average_time": None,
+            "min": None,
+            "max": None,
+            "stdev": None,
+            "fail_percentage": 100
+        }
         return
     min_time=min(result_times)
     max_time=max(result_times)
@@ -105,12 +122,23 @@ def parse_times(result_obj):
         stdev=statistics.stdev(result_times)
     result_obj["analysis"] = {"average_time": average, "min": min_time, "max": max_time, "stdev": stdev, "fail_percentage": fail_percentage}
 
-def run_command_test(command, iterations, lang=None, print_result=False, save_data=False, plot_out=False, debug=False):
+'''
+Runs a sequential command test. Recursively calls itself if no lang is provided to test all languages
+
+command: the endpoint to request
+iterations: the number of requests to record (more data points)
+lang: the language to test. If none is provided, test all.
+print_results: flag to print the analysis of the test
+save_data: flag to save the run data to CSV
+plot_out: flag to save the graph of the data
+debug: flag to show more verbose test information
+'''
+def run_sequential_test(command, iterations, lang=None, print_result=False, save_data=False, plot_out=False, debug=False):
     if lang is None:
         out = {}
         out["final_analysis"] = {}
         for lang in ports.keys():
-            out[lang] = run_command_test(command, iterations, lang, print_result=False, debug=debug)
+            out[lang] = run_sequential_test(command, iterations, lang, print_result=False, debug=debug)
             out["final_analysis"][lang] = out[lang]["analysis"]
         if print_result:
             pprint.pprint(out["final_analysis"])
@@ -120,9 +148,9 @@ def run_command_test(command, iterations, lang=None, print_result=False, save_da
             os.mkdir("../datasets/" + fh)
             os.chdir("../datasets/" + fh)
         if save_data:
-            json_to_csv(out, "sequential", command, iterations, fh)
+            json_to_csv(out, "sequential", command, iterations)
         if plot_out:
-            plot_result(out, "sequential", command, fh)
+            plot_result(out, "sequential", command)
         return out
     
     # first run is usually slower so discard value
@@ -145,8 +173,14 @@ def run_command_test(command, iterations, lang=None, print_result=False, save_da
         print(result_data["analysis"])
     return result_data
 
+'''
+Generates multiple threads to simulate simultaneous connections
 
-def strain_server(lang, command, connections, out=None):
+lang: the language to test
+command: the endpoint to request
+connections: the number of threads to generate
+'''
+def strain_server(lang, command, connections):
     threads = []
     results_dict = {"result_times": []}
     # first run is usually slower so discard value
@@ -163,7 +197,17 @@ def strain_server(lang, command, connections, out=None):
     results_dict["attempted_connections"] = connections
     return results_dict
 
-            
+'''
+Runs a simultaneous command test. Recursively calls itself if no lang is provided to test all languages
+
+command: the endpoint to request
+connections: the number of simultaneous requests to generate
+lang: the language to test. If none is provided, test all.
+print_results: flag to print the analysis of the test
+save_data: flag to save the run data to CSV
+plot_out: flag to save the graph of the data
+debug: flag to show more verbose test information
+'''
 def run_strain_test(command, connections, lang=None, print_result=False, save_data=False, plot_out=False, debug=False):
     if lang is None:
         out = {}
@@ -174,14 +218,14 @@ def run_strain_test(command, connections, lang=None, print_result=False, save_da
         if print_result:
             pprint.pprint(out["final_analysis"])
             
-        fh = datetime.datetime.now().strftime("%H-%M")
+        fh = datetime.datetime.now().strftime("%H-%M-%S")
         if save_data or plot_out:
             os.mkdir("../datasets/" + fh)
             os.chdir("../datasets/" + fh)
         if save_data:
-            json_to_csv(out, "multi-connection", command, connections, fh)
+            json_to_csv(out, "multi-connection", command, connections)
         if plot_out:
-            plot_result(out, "multi-connection", command, fh)
+            plot_result(out, "multi-connection", command)
         return out
             
     results = strain_server(lang, command, connections)
@@ -198,8 +242,8 @@ def run_strain_test(command, connections, lang=None, print_result=False, save_da
     return results
 
 
-def json_to_csv(json_obj, type, command, connections, out_file):
-    filename = "data-" + out_file + ".csv"
+def json_to_csv(json_obj, type, command, connections):
+    filename = "data.csv"
     fh = open(filename, 'w')
     csv_writer = csv.writer(fh)
     csv_writer.writerow([command, type, connections])
@@ -207,13 +251,13 @@ def json_to_csv(json_obj, type, command, connections, out_file):
         if key is not 'final_analysis':
             csv_writer.writerow([key])
             for i in range(0, len(json_obj[key]["result_times"])):
-                csv_writer.writerow([i, str(json_obj[key]["result_times"][i]*1000)])
+                csv_writer.writerow([i, str(json_obj[key]["result_times"][i])])
             for stat in json_obj[key]["analysis"]:
                 csv_writer.writerow([stat, json_obj[key]["analysis"][stat]])
             csv_writer.writerow("")
     fh.close()
     
-def plot_result(json_obj, type, command, fh):
+def plot_result(json_obj, type, command):
     for key in json_obj.keys():
         if key is not 'final_analysis':
             plt.bar(
@@ -221,13 +265,12 @@ def plot_result(json_obj, type, command, fh):
                 json_obj[key]["result_times"],
                 
             )
-            filename = "{}-plot-{}".format(key, fh)
+            filename = "{}-plot".format(key)
             plt.title("{} {} times ({})".format(key, command, type))
-            plt.ylabel("times (ms)")
+            plt.ylabel("response time (ms)")
             plt.xlabel("iteration")
             plt.savefig(filename)
             plt.close()
 
-#run_strain_test(connections=500, command="get-mini-employees", print_result=True, debug=True)
-
-run_strain_test("get-mini-employee", 400, save_data=True, print_result=True, plot_out=True)
+if __name__ == "__main__":
+    run_strain_test("get-mini-employee", 10, lang="python", save_data=False, print_result=True, plot_out=True)

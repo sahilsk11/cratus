@@ -116,7 +116,9 @@ def run_command_test(command, iterations, lang=None, print_result=False, save_da
             pprint.pprint(out["final_analysis"])
         
         fh = datetime.datetime.now().strftime("%H-%M-%S")
-
+        if save_data or plot_out:
+            os.mkdir("../datasets/" + fh)
+            os.chdir("../datasets/" + fh)
         if save_data:
             json_to_csv(out, "sequential", command, iterations, fh)
         if plot_out:
@@ -174,8 +176,8 @@ def run_strain_test(command, connections, lang=None, print_result=False, save_da
             
         fh = datetime.datetime.now().strftime("%H-%M")
         if save_data or plot_out:
-            os.mkdir("./datasets/" + fh)
-            os.chdir("./datasets/" + fh)
+            os.mkdir("../datasets/" + fh)
+            os.chdir("../datasets/" + fh)
         if save_data:
             json_to_csv(out, "multi-connection", command, connections, fh)
         if plot_out:

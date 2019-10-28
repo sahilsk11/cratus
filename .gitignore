@@ -1,4 +1,6 @@
 error.log
+passwords.py
+db_config.js
 .idea
 .project
 .classpath

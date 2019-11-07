@@ -1,3 +1,7 @@
+echo "Installing system dependencies..."
+echo "Root permission required to install PostgreSQL"
+sudo apt install postgresql
+sudo apt install python3-venv
 echo "Installing node dependencies..."
 cd services/node/;
 npm install;

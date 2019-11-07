@@ -1,0 +1,10 @@
+__pycache__/
+error.log
+passwords.py
+db_config.js
+node_modules/
+.idea
+.project
+.classpath
+.settings
+.hidden/

@@ -9,6 +9,7 @@ import datetime
 import pprint
 import matplotlib.pyplot as plt
 import os
+import random
 
 '''
 The client acts as the component receiving data from the back end
@@ -18,8 +19,8 @@ Think of this as the front end of the application requesting data from a service
 Contains function to test each service
 '''
 
-ports = {"python": "5001",
-         "java": "9090",
+ports = {"python": "5000",
+         
          "node": "3000",
          "go": "8080"
          }
@@ -34,12 +35,13 @@ command: the endpoint to request
 results: stores the output as a dict in results
 params: list of URL parameters as tuples
 '''
-def time_request(port, command, results=None, params=None):
+def time_request(port, command, results=None, params=None, hostname="localhost"):
     param_list = {}
     error = {"message": None, "error_object": None}
     failed = False
     traceback_message = None
     total_time = 0
+    r = None
     
     #generates dict for URL parameters
     if params != None:
@@ -49,7 +51,7 @@ def time_request(port, command, results=None, params=None):
     try:
         start_time = time.time()
         r = requests.get(
-            "http://localhost:" + port + "/" + command,
+            "http://{}:{}/{}".format(hostname, port, command),
             params=param_list,
             timeout=10000,
         )
@@ -64,6 +66,7 @@ def time_request(port, command, results=None, params=None):
         error = {"message": "unhandled error in connection", "error_object": e}
         failed = True
         traceback_message = traceback.format_exc(limit=1)
+
     #since we store output in results, if no results is passed, discard run
     if results is None:
         return
@@ -71,10 +74,8 @@ def time_request(port, command, results=None, params=None):
     lock.acquire()
     if not failed:
         results["result_times"].append(total_time)
-    else:
-        results["debug_report"] = generate_debug_report(
+    results["debug_report"] = generate_debug_report(
             error, failed, r, traceback_message, port, total_time)
-
     lock.release()
 
 def verify_response(command, r, n=20):
@@ -83,12 +84,15 @@ def verify_response(command, r, n=20):
     if command == "calculatefib":
         expected = {20: "6765", 30: "832040", 34: "5702887"}
         return r.text == expected[n]
+    if command == "helloworld":
+        return r.text == "hello world"
+    print("Warning: unknown command")
     return True
 
 def generate_debug_report(error, failed, r, traceback_message, port, total_time):
     debug_report = {}
     successful_connection = error["error_object"] == None
-    if successful_connection and failed:
+    if r is not None:
         debug_report["response_text"] = r.text[:10]
     debug_report["successful_connection"] = successful_connection
     debug_report["error_message"] = error["message"]
@@ -96,7 +100,8 @@ def generate_debug_report(error, failed, r, traceback_message, port, total_time)
         debug_report["unhandled_error"] = str(error["error_object"])
         debug_report["traceback"] = str(traceback_message)
     debug_report["port"] = port
-    debug_report["status_code"]: r.status_code
+    if r is not None:
+        debug_report["status_code"]: r.status_code
     debug_report["execution_time"]: str(total_time)
     return debug_report
 
@@ -137,7 +142,7 @@ def run_sequential_test(command, iterations, lang=None, print_result=False, save
     if lang is None:
         out = {}
         out["final_analysis"] = {}
-        for lang in ports.keys():
+        for lang in random.shuffle(ports.keys()):
             out[lang] = run_sequential_test(command, iterations, lang, print_result=False, debug=debug)
             out["final_analysis"][lang] = out[lang]["analysis"]
         if print_result:
@@ -152,14 +157,11 @@ def run_sequential_test(command, iterations, lang=None, print_result=False, save
         if plot_out:
             plot_result(out, "sequential", command)
         return out
-    
-    # first run is usually slower so discard value
-    time_request(ports[lang], "helloworld")
+
     result_data = {"result_times": []}
     for _ in range(0, iterations):
         time_request(ports[lang], command, result_data)
-    result_data["failed_connections"] = iterations - \
-        len(result_data["result_times"])
+    result_data["failed_connections"] = iterations - len(result_data["result_times"])
     result_data["attempted_connections"] = iterations
     parse_times(result_data)
     if debug:
@@ -167,6 +169,7 @@ def run_sequential_test(command, iterations, lang=None, print_result=False, save
             print(lang, "services functioning normally")
         else:
             print("********************\n{} debug report".format(lang))
+            print(result_data.keys())
             pprint.pprint(result_data["debug_report"])
             print("********************\n")
     if print_result:
@@ -222,6 +225,7 @@ def run_strain_test(command, connections, lang=None, print_result=False, save_da
         if save_data or plot_out:
             os.mkdir("../datasets/" + fh)
             os.chdir("../datasets/" + fh)
+            
         if save_data:
             json_to_csv(out, "multi-connection", command, connections)
         if plot_out:
@@ -239,38 +243,67 @@ def run_strain_test(command, connections, lang=None, print_result=False, save_da
             print("********************\n")
     if print_result:
         print(results["analysis"]) 
+    fh = datetime.datetime.now().strftime("%H-%M-%S")
+    if save_data or plot_out:
+        os.mkdir("../datasets/" + fh)
+        os.chdir("../datasets/" + fh)
+    if save_data:
+            json_to_csv(results, "multi-connection", command, connections, lang=lang)
+    if plot_out:
+        plot_result(results, "multi-connection", command, lang=lang)
     return results
 
 
-def json_to_csv(json_obj, type, command, connections):
+def json_to_csv(json_obj, type, command, connections, lang=None):
     filename = "data.csv"
     fh = open(filename, 'w')
     csv_writer = csv.writer(fh)
     csv_writer.writerow([command, type, connections])
-    for key in json_obj.keys():
-        if key is not 'final_analysis':
-            csv_writer.writerow([key])
-            for i in range(0, len(json_obj[key]["result_times"])):
-                csv_writer.writerow([i, str(json_obj[key]["result_times"][i])])
-            for stat in json_obj[key]["analysis"]:
-                csv_writer.writerow([stat, json_obj[key]["analysis"][stat]])
-            csv_writer.writerow("")
+    if lang is not None:
+        csv_writer.writerow([lang])
+        for i in range(0, len(json_obj["result_times"])):
+            csv_writer.writerow([i, str(json_obj["result_times"][i])])
+        for stat in json_obj["analysis"]:
+            csv_writer.writerow([stat, json_obj["analysis"][stat]])
+        csv_writer.writerow("")
+    else:
+        for key in json_obj.keys():
+            if key is not 'final_analysis':
+                csv_writer.writerow([key])
+                for i in range(0, len(json_obj[key]["result_times"])):
+                    csv_writer.writerow([i, str(json_obj[key]["result_times"][i])])
+                for stat in json_obj[key]["analysis"]:
+                    csv_writer.writerow([stat, json_obj[key]["analysis"][stat]])
+                csv_writer.writerow("")
     fh.close()
     
-def plot_result(json_obj, type, command):
-    for key in json_obj.keys():
-        if key is not 'final_analysis':
-            plt.bar(
-                list(range(0, len(json_obj[key]["result_times"]))),
-                json_obj[key]["result_times"],
-                
-            )
-            filename = "{}-plot".format(key)
-            plt.title("{} {} times ({})".format(key, command, type))
-            plt.ylabel("response time (ms)")
-            plt.xlabel("iteration")
-            plt.savefig(filename)
-            plt.close()
+def plot_result(json_obj, type, command, lang=None):
+    if lang is not None:
+        plt.bar(
+            list(range(0, len(json_obj["result_times"]))),
+            json_obj["result_times"],
+
+        )
+        filename = "{}-plot".format(lang)
+        plt.title("{} {} times ({})".format(lang, command, type))
+        plt.ylabel("response time (ms)")
+        plt.xlabel("iteration")
+        plt.savefig(filename)
+        plt.close()
+    else:
+        for key in json_obj.keys():
+            if key is not 'final_analysis':
+                plt.bar(
+                    list(range(0, len(json_obj[key]["result_times"]))),
+                    json_obj[key]["result_times"],
+                    
+                )
+                filename = "{}-plot".format(key)
+                plt.title("{} {} times ({})".format(key, command, type))
+                plt.ylabel("response time (ms)")
+                plt.xlabel("iteration")
+                plt.savefig(filename)
+                plt.close()
 
 if __name__ == "__main__":
-    run_strain_test("get-mini-employee", 10, lang="python", save_data=False, print_result=True, plot_out=True)
+    run_strain_test("get-mini-employees", 1000, lang="go", save_data=True, print_result=True, plot_out=True, debug=True)

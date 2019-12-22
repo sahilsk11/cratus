@@ -306,4 +306,4 @@ def plot_result(json_obj, type, command, lang=None):
                 plt.close()
 
 if __name__ == "__main__":
-    run_strain_test("get-mini-employees", 1000, lang="go", save_data=True, print_result=True, plot_out=True, debug=True)
+    run_strain_test("get-mini-employees", 1000, lang="python", save_data=True, print_result=True, plot_out=True, debug=True)
